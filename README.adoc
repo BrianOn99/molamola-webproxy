@@ -1,0 +1,18 @@
+= molamola-web-proxy, a http proxy which slows down your http service
+
+== Build
+----
+make
+----
+
+== Coding Convention
+
+* Follow the Unix convention:
+** For function which DO something, return 0 in success
+** For function which TEST something, such as `isodd(num)`, return 1 on success
+* Avoid unnecessary typedef
+
+[WARNING]
+====
+* This is an CUHK CS assignment.  *NOT* for secure usage.
+====
