@@ -11,14 +11,12 @@ CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 %.o: src/%.c
 	$(CC_CMD)
 
+myproxy: server.o accepter.o
+	$(CC) $(CFLAGS) -o $@ $^
+
 debug: CFLAGS += -D_DEBUG -g
 debug: default
 
-myproxy: server.o
-	$(CC) $(CFLAGS) -o $@ $<
-
-default: myproxy
-
 .PHONY: clean
 clean:
-	rm *.o server
+	rm *.o myproxy

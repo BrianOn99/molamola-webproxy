@@ -5,6 +5,11 @@
 make
 ----
 
+== Debug
+
+error are printed to stderr directly, while other messages are logged through
+syslog().  If you use systemd, `journalctl -b` will show you the messages.
+
 == Coding Convention
 
 * Follow the Unix convention:

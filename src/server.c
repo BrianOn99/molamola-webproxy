@@ -1,6 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "syslog.h"
+#include "accepter.h"
 
 void usage_exit()
 {
@@ -25,5 +27,9 @@ int main(int argc, char **argv)
                 puts("Error: Invalid port number");
                 usage_exit();
         }
-        return port;
+        openlog(argv[0], LOG_CONS | LOG_PID, LOG_LOCAL1);
+        serve(port);
+        closelog();
+
+        return 0;
 }
