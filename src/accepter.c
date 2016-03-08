@@ -1,30 +1,28 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 #include "stdio.h"
 #include "syslog.h"
 #include "xmalloc.h"
+#include "request_state.h"
+#include "http_parser.h"
 
 #define MAXFD 4096
-#define RECV_BUF_SIZE 4096
+#define RECV_BUF_SIZE 8192
 
+/* the array to store socket fd for threads */
 static int thread_sockfd[MAXFD];
 
-struct request {
-        int sockfd;
-        char *recv_buf;     /* buffer to hold raw request */
-        char *recv_buf_end; /* upper limit of the buffer (exclusive) */
-        char *parse_start;  /* where next parsing start */
-        char *parse_end;    /* only data upto this (exclusive) is meaningful */
-};
-
-void close_serving_thread(int sockfd)
+static void close_serving_thread(int sockfd)
 {
         close(sockfd);
 }
 
-int init_sock(long port)
+/*
+ * initialize socket
+ */
+static int init_sock(long port)
 {
         int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -45,59 +43,37 @@ int init_sock(long port)
 }
 
 /*
- * try to receive request message, upto but not neccesary max_len
+ * the thread subroutine to serve 1 client
  */
-int try_read(struct request *req, unsigned int max_len)
-{
-        int ret;
-        if (req->parse_end + max_len > req->recv_buf_end) {
-                fprintf(stderr, "In try_read: buffer overflow\n");
-                return -1;
-        }
-        while ((ret = read(req->sockfd, req->parse_end, max_len)) == -1) {
-                if (errno == EINTR)
-                        continue;
-                perror("Error reading");
-                return -1;
-        }
-        req->parse_end += ret;
-        return ret;
-}
-
-void parse_request(struct request *req)
-{
-        printf("%p %p\n", req->recv_buf, req->parse_end);
-        fwrite(req->recv_buf, req->parse_end - req->recv_buf, 1, stdout);
-}
-
-void *dedicated_serve(void *p)
+static void *dedicated_serve(void *p)
 {
         int sockfd = *((int*)p);
 
-        char *buf = xmalloc(RECV_BUF_SIZE);
+        char *buf = xmalloc(RECV_BUF_SIZE + 1);
         struct request req = {
                 .sockfd = sockfd,
                 .recv_buf = buf,
                 .recv_buf_end = buf + RECV_BUF_SIZE,
                 .parse_start = buf,
                 .parse_end = buf,
+                .headers_num = 0,
         };
 
-        int ret = try_read(&req, RECV_BUF_SIZE);
-        if (ret == 0 || ret == -1) {
-                syslog(LOG_INFO, "early close");
-                close_serving_thread(sockfd);
-        }
+        int ret = parse_request(&req);
+        if (ret != -1) {}
 
-        parse_request(&req);
+        for (int i=0; i < req.headers_num; i++)
+                free(req.headers[i].value);
 
         syslog(LOG_INFO, "closed connection");
         close_serving_thread(sockfd);
         return NULL;
 }
 
-/* make a new thread to serve this sockfd (not implemented) */
-void mkthread_serve(int sockfd)
+/*
+ * make a new thread to serve this sockfd (not implemented)
+ */
+static void mkthread_serve(int sockfd)
 {
         if (sockfd >= MAXFD) {
                 syslog(LOG_CRIT, "cannot handle large file descriptor");
@@ -108,7 +84,9 @@ void mkthread_serve(int sockfd)
         dedicated_serve(&thread_sockfd[sockfd]);
 }
 
-/* initialize the socket (listen to it), and accept connections */
+/*
+ * initialize the socket (listen to it), and accept connections
+ */
 int serve(int port)
 {
         int sockfd = init_sock(port);

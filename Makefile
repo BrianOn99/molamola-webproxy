@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -I. -O1
+CFLAGS = -std=gnu99 -Wall -I. -Og
 CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 
 #UNAME := $(shell uname)
@@ -11,8 +11,10 @@ CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 %.o: src/%.c
 	$(CC_CMD)
 
-myproxy: server.o accepter.o xmalloc.o
+myproxy: server.o accepter.o xmalloc.o http_parser.o
 	$(CC) $(CFLAGS) -o $@ $^
+
+accepter.o: http_parser.o
 
 debug: CFLAGS += -D_DEBUG -g
 debug: myproxy
