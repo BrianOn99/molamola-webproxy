@@ -1,1 +1,1 @@
-int serve(int sockfd);
+int serve(char *sockfd);

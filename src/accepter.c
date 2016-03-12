@@ -1,4 +1,6 @@
 #include <sys/socket.h>
+#include <netdb.h>
+#include <string.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "stdio.h"
@@ -13,20 +15,21 @@ static int thread_sockfd[MAXFD];
 /*
  * initialize socket
  */
-static int init_sock(long port)
+static int init_sock(char *port)
 {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+        struct addrinfo hints, *res;
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_flags = AI_PASSIVE;
+        getaddrinfo(NULL, port, &hints, &res);
+
+        int sockfd = socket(res->ai_family, SOCK_STREAM, 0);
 
         /* make the port reusable immediately after program killed */
         setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
-        struct sockaddr_in my_addr = {
-                .sin_family = AF_INET,
-                .sin_port = htons(port),
-                .sin_addr = {.s_addr = INADDR_ANY}
-        };
-
-        int ret = bind(sockfd, (struct sockaddr *)&my_addr, sizeof(struct sockaddr));
+        int ret = bind(sockfd, res->ai_addr, res->ai_addrlen);
         if (ret == -1 || listen(sockfd, 0) == -1)
                 return -1;
         else
@@ -50,7 +53,7 @@ static void mkthread_serve(int sockfd)
 /*
  * initialize the socket (listen to it), and accept connections
  */
-int serve(int port)
+int serve(char *port)
 {
         int sockfd = init_sock(port);
         if (sockfd == -1) {

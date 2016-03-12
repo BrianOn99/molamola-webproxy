@@ -9,6 +9,7 @@
 #include "syslog.h"
 #include "request_state.h"
 
+enum parse_state { REQUEST_LINE, HEADER_LINES };
 /*
  * find where this http line end
  */
@@ -127,28 +128,10 @@ static int try_read(struct request *req, unsigned int max_len)
  */
 int parse_request(struct request *req)
 {
-        int ret = try_read(req, (req->recv_buf_end - req->parse_end));
-        if (ret == 0 || ret == -1) {  /* 0 means client closed */
-                syslog(LOG_INFO, "early close");
-                return -1;
-        }
-
-        char *p = line_end(req);
-        if (!p) {
-                syslog(LOG_CRIT, "The request line is too long to handle");
-                return -1;
-        }
-
-        if (parse_request_line(req) == -1) {
-                syslog(LOG_CRIT, "The request line is bad");
-                return -1;
-        }
-
-        /* start parsing headers */
+        enum parse_state p_state = REQUEST_LINE;
         while (1) {
                 if (req->parse_start >= req->parse_end) {
-                        /* TODO: refactor this code */
-                        ret = try_read(req, (req->recv_buf_end - req->parse_end));
+                        int ret = try_read(req, (req->recv_buf_end - req->parse_end));
                         if (ret == 0 || ret == -1) {  /* 0 means client closed */
                                 syslog(LOG_INFO, "early close 2");
                                 return -1;
@@ -160,15 +143,25 @@ int parse_request(struct request *req)
                         syslog(LOG_CRIT, "The request headers are too long to handle");
                         return -1;
                 }
-                if (p == req->parse_start) {/* meeting 2 CRLF: end of headers */
-                        req->parse_start += 2;
+
+                switch (p_state) {
+                case REQUEST_LINE:
+                        if (parse_request_line(req) == -1) {
+                                syslog(LOG_CRIT, "The request line is bad");
+                                return -1;
+                        }
+                        p_state = HEADER_LINES;
+                        break;
+                case HEADER_LINES:
+                        if (p == req->parse_start) {  /* meeting 2 CRLF: end of headers */
+                                req->parse_start += 2;
+                                return 0;
+                        }
+                        if (parse_header_line(req) == -1) {
+                                syslog(LOG_CRIT, "The header line is bad");
+                                return -1;
+                        }
                         break;
                 }
-
-                if (parse_header_line(req) == -1) {
-                        syslog(LOG_CRIT, "The header line is bad");
-                        return -1;
-                }
         }
-        return 0;
 }
