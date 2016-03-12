@@ -11,10 +11,12 @@ CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 %.o: src/%.c
 	$(CC_CMD)
 
-myproxy: server.o accepter.o xmalloc.o http_parser.o
+myproxy: server.o accepter.o xmalloc.o http_parser.o serve_request.o readwrite.o
 	$(CC) $(CFLAGS) -o $@ $^
 
-accepter.o: http_parser.o
+serve_request.o: http_parser.o readwrite.o
+
+accepter.o: serve_request.o
 
 debug: CFLAGS += -D_DEBUG -g
 debug: myproxy

@@ -22,6 +22,19 @@ static char *line_end(struct request *req)
 }
 
 /*
+ * this is called after the headers are paresed
+ * to get the value associated with a header field
+ */
+char *header_to_value(struct request *req, char field_name[])
+{
+        for (int i=0; i < req->headers_num; i++) {
+                if (strcmp(field_name, req->headers[i].field_name) == 0)
+                        return req->headers[i].value;
+        }
+        return NULL;
+}
+
+/*
  * consume 1 line from req->parse_start, and store the HTTP method in request
  */
 static int parse_request_line(struct request *req)
@@ -60,7 +73,8 @@ static int parse_header_line(struct request *req)
          * useless*/
         static regmatch_t match[4];
         regcomp(&regex, "^([a-zA-Z_-]+): (([^\r]|\r[^\n])+)\r\n", REG_EXTENDED);
-        int ret = regexec(&regex, str, 2, match, 0);
+
+        int ret = regexec(&regex, str, 4, match, 0);
         if (ret)
                 return -1;
 
@@ -146,8 +160,10 @@ int parse_request(struct request *req)
                         syslog(LOG_CRIT, "The request headers are too long to handle");
                         return -1;
                 }
-                if (p == req->parse_start) /* meeting 2 CRLF: end of headers */
+                if (p == req->parse_start) {/* meeting 2 CRLF: end of headers */
+                        req->parse_start += 2;
                         break;
+                }
 
                 if (parse_header_line(req) == -1) {
                         syslog(LOG_CRIT, "The header line is bad");
