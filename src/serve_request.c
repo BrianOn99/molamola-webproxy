@@ -49,9 +49,7 @@ static int forward_request(struct request *req)
         freeaddrinfo(result);
 
         swrite(sfd, req->recv_buf, req->parse_start - req->recv_buf);
-        sread(sfd, req->recv_buf, 64);
-        fwrite(req->recv_buf, 64, 1, stdout);
-        puts("");
+        transfer_file_copy(req->sockfd, sfd, 256);
         return 0;
 }
 

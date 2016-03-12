@@ -63,15 +63,13 @@ int sread(int fd, void *buf, unsigned int len)
 /*
  * copy file descriptor content
  */
-int transfer_file_copy(int out_fd, int in_fd, off_t size_remain,
-                      void (*progress)(double percent))
+int transfer_file_copy(int out_fd, int in_fd, off_t size_remain)
 {
         void *buf = malloc(DATA_BUFSIZE);
         if (!buf) {
                 perror("malloc error");
                 exit(1);
         }
-        off_t orig_size= size_remain;
         while (size_remain > 0) {
                 unsigned int send_this_time;
                 if (size_remain > DATA_BUFSIZE) {
@@ -84,9 +82,6 @@ int transfer_file_copy(int out_fd, int in_fd, off_t size_remain,
                 if (swrite(out_fd, buf, send_this_time) == -1)
                         return -1;
                 size_remain -= send_this_time;
-
-                if (progress != NULL)
-                        progress((orig_size-size_remain)/(double)orig_size);
         }
         return 0;
 }
