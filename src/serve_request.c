@@ -4,22 +4,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
-#include "xmalloc.h"
-#include "request_state.h"
+#include "parser_state.h"
 #include "http_parser.h"
 #include "readwrite.h"
 
-#define RECV_BUF_SIZE 8192
-
-static void close_serving_thread(struct request *req)
+static void close_serving_thread(struct parser *req)
 {
+        parser_free(req);
+        free(req);
         close(req->sockfd);
-        free(req->recv_buf);
-        for (int i=0; i < req->headers_num; i++)
-                free(req->headers[i].value);
 }
 
-static int forward_request(struct request *req)
+static int forward_request(struct parser *req)
 {
         char *hostname = header_to_value(req, "Host");
         if (!hostname)  /* the Host field is not found */
@@ -50,6 +46,7 @@ static int forward_request(struct request *req)
 
         freeaddrinfo(result);
 
+        /* start forwarding the http request */
         swrite(sfd, req->recv_buf, req->parse_start - req->recv_buf);
         transfer_file_copy(req->sockfd, sfd, 256);
         return 0;
@@ -62,20 +59,12 @@ void *serve_request(void *p)
 {
         int sockfd = *((int*)p);
 
-        char *buf = xmalloc(RECV_BUF_SIZE + 1);
-        struct request req = {
-                .sockfd = sockfd,
-                .recv_buf = buf,
-                .recv_buf_end = buf + RECV_BUF_SIZE,
-                .parse_start = buf,
-                .parse_end = buf,
-                .headers_num = 0,
-        };
+        struct parser *req = new_parser(sockfd);
 
-        if (parse_request(&req) == 0)
-                forward_request(&req);
+        if (parse_request(req) == 0)
+                forward_request(req);
 
         syslog(LOG_INFO, "closed connection");
-        close_serving_thread(&req);
+        close_serving_thread(req);
         return NULL;
 }

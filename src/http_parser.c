@@ -6,14 +6,37 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
+#include "xmalloc.h"
 #include "syslog.h"
-#include "request_state.h"
+#include "parser_state.h"
+
+#define RECV_BUF_SIZE 8192
 
 enum parse_state { REQUEST_LINE, HEADER_LINES };
+
+struct parser *new_parser(int sockfd)
+{
+        char *buf = xmalloc(RECV_BUF_SIZE + 1);
+        struct parser *p = xmalloc(sizeof(struct parser));
+        p->sockfd = sockfd;
+        p->recv_buf = buf;
+        p->recv_buf_end = buf + RECV_BUF_SIZE;
+        p->parse_start = p->parse_end = buf;
+        p->headers_num = 0;
+        return p;
+}
+
+void parser_free(struct parser *req)
+{
+        free(req->recv_buf);
+        for (int i=0; i < req->headers_num; i++)
+                free(req->headers[i].value);
+}
+
 /*
  * find where this http line end
  */
-static char *line_end(struct request *req)
+static char *line_end(struct parser *req)
 {
         for (char *p=req->parse_start; p < req->parse_end; p++) {
                 if (*p == '\r' && *(p+1) == '\n')
@@ -26,7 +49,7 @@ static char *line_end(struct request *req)
  * this is called after the headers are paresed
  * to get the value associated with a header field
  */
-char *header_to_value(struct request *req, char field_name[])
+char *header_to_value(struct parser *req, char field_name[])
 {
         for (int i=0; i < req->headers_num; i++) {
                 if (strcmp(field_name, req->headers[i].field_name) == 0)
@@ -38,7 +61,7 @@ char *header_to_value(struct request *req, char field_name[])
 /*
  * consume 1 line from req->parse_start, and store the HTTP method in request
  */
-static int parse_request_line(struct request *req)
+static int parse_request_line(struct parser *req)
 {
         char *str = req->parse_start;
         static regex_t regex;
@@ -50,7 +73,7 @@ static int parse_request_line(struct request *req)
                 return -1;
 
         regmatch_t met = match[1];
-        req->method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
+        req->type.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
         req->parse_start += match[0].rm_eo;
 
         regfree(&regex);
@@ -65,7 +88,7 @@ static char *dup_second_match(char *orig, regmatch_t match[])
 /*
  * consume 1 line from req->parse_start, and store the header field if necessary
  */
-static int parse_header_line(struct request *req)
+static int parse_header_line(struct parser *req)
 {
         char *str = req->parse_start;
         static regex_t regex;
@@ -99,9 +122,9 @@ static int parse_header_line(struct request *req)
 }
 
 /*
- * try to receive request message, upto but not neccesary max_len
+ * try to receive message, upto but not neccesary max_len
  */
-static int try_read(struct request *req, unsigned int max_len)
+static int try_read(struct parser *req, unsigned int max_len)
 {
         int ret;
         if (req->parse_end + max_len > req->recv_buf_end) {
@@ -126,7 +149,7 @@ static int try_read(struct request *req, unsigned int max_len)
  * parse the request line and headers
  * return -1 if the request is too long or non-standard
  */
-int parse_request(struct request *req)
+int parse_request(struct parser *req)
 {
         enum parse_state p_state = REQUEST_LINE;
         while (1) {
