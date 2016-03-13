@@ -45,10 +45,29 @@ static int forward_request(struct parser *req)
         }
 
         freeaddrinfo(result);
+        syslog(LOG_INFO, "openned connection to remote http");
 
         /* start forwarding the http request */
+        struct parser *reply = new_parser(sfd);
         swrite(sfd, req->recv_buf, req->parse_start - req->recv_buf);
-        transfer_file_copy(req->sockfd, sfd, 256);
+        if (parse_response(reply) == 0) {
+                int header_len = reply->parse_start - reply->recv_buf;
+                char *content_len_str = header_to_value(reply, "Content-Length");
+                int content_len = 0;
+                if (content_len_str) {
+                        content_len = strtol(content_len_str, 0, 10);
+                }
+
+                /* write all things we have received yet */
+                int loaded_len = reply->parse_end - reply->recv_buf;
+                swrite(req->sockfd, reply->recv_buf, loaded_len);
+                /* write the remainings */
+                transfer_file_copy(req->sockfd, sfd, content_len + header_len - loaded_len);
+        }
+
+        parser_free(reply);
+        free(reply);
+        syslog(LOG_INFO, "closed connection to remote http");
         return 0;
 }
 

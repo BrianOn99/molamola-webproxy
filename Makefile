@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu99 -Wall -I. -Og
+CFLAGS = -std=gnu99 -Wall -I.
 CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 
 #UNAME := $(shell uname)

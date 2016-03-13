@@ -59,6 +59,7 @@ char *header_to_value(struct parser *req, char field_name[])
 }
 
 /*
+ * Only use this for http request message
  * consume 1 line from req->parse_start, and store the HTTP method in request
  */
 static int parse_request_line(struct parser *req)
@@ -74,6 +75,34 @@ static int parse_request_line(struct parser *req)
 
         regmatch_t met = match[1];
         req->type.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
+        req->parse_start += match[0].rm_eo;
+
+        regfree(&regex);
+        return 0;
+}
+
+/*
+ * Only use this for http response message
+ * consume 1 line from req->parse_start, and store the status code in request
+ */
+static int parse_status_line(struct parser *req)
+{
+        char *str = req->parse_start;
+        static regex_t regex;
+        /* store the match. [0] is the whole string. [1] is status code e.g.200 */
+        static regmatch_t match[2];
+        regcomp(&regex, "^HTTP/[0-9]\\.[0-9] ([0-9]{3}) ([^\r]|\r[^\n])+\r\n", REG_EXTENDED);
+        int ret = regexec(&regex, str, 2, match, 0);
+        if (ret)
+                return -1;
+
+        regmatch_t met = match[1];
+        char *end;
+        int code = strtol(str+met.rm_so, &end, 10);
+        if (end-(str+met.rm_so) != 3)
+                return -1;
+
+        req->type.status_code = code;
         req->parse_start += match[0].rm_eo;
 
         regfree(&regex);
@@ -102,18 +131,17 @@ static int parse_header_line(struct parser *req)
         if (ret)
                 return -1;
 
-        if (strncmp("If-Modified-Since", str + match[1].rm_so, 17) == 0 ||
-            strncmp("Host", str + match[1].rm_so, 4) == 0 ||
-            strncmp("Cache-Control", str + match[1].rm_so, 13) == 0) {
-                int i = req->headers_num;
-                if (i >= MAX_HEADER)  /* this should not happen, but try to be secure */
-                        return -1;
-                int len = match[1].rm_eo-match[1].rm_so;
-                syslog(LOG_INFO, "got %s", strndupa(str, match[1].rm_eo-match[1].rm_so));
-                memcpy(req->headers[i].field_name, (str + match[1].rm_so), len);
-                req->headers[i].value = dup_second_match(str, match);
-                req->headers_num++;
-        }
+        /* store this  header */
+        int i = req->headers_num;
+        if (i >= MAX_HEADER)  /* this should not happen in most cases */
+                return -1;
+        int len = match[1].rm_eo-match[1].rm_so;
+        syslog(LOG_INFO, "got %s", strndupa(str, match[1].rm_eo-match[1].rm_so));
+        memcpy(req->headers[i].field_name, (str + match[1].rm_so), len);
+        req->headers[i].field_name[len] = '\0';
+        req->headers[i].value = dup_second_match(str, match);
+        req->headers_num++;
+        /* finish storing header */
 
         req->parse_start += match[0].rm_eo;  /* update where next parse should start */
 
@@ -146,31 +174,32 @@ static int try_read(struct parser *req, unsigned int max_len)
 }
 
 /*
- * parse the request line and headers
- * return -1 if the request is too long or non-standard
+ * parse the first line (by first_line_fn) and headers
+ * return -1 if the message is too long or non-standard
  */
-int parse_request(struct parser *req)
+static int
+parse_general_http(struct parser *req, int (*first_line_fn)(struct parser *p))
 {
         enum parse_state p_state = REQUEST_LINE;
         while (1) {
                 if (req->parse_start >= req->parse_end) {
                         int ret = try_read(req, (req->recv_buf_end - req->parse_end));
                         if (ret == 0 || ret == -1) {  /* 0 means client closed */
-                                syslog(LOG_INFO, "early close 2");
+                                syslog(LOG_INFO, "early close");
                                 return -1;
                         }
                 }
 
                 char *p = line_end(req);
                 if (!p) {
-                        syslog(LOG_CRIT, "The request headers are too long to handle");
+                        syslog(LOG_CRIT, "The headers are too long to handle");
                         return -1;
                 }
 
                 switch (p_state) {
                 case REQUEST_LINE:
-                        if (parse_request_line(req) == -1) {
-                                syslog(LOG_CRIT, "The request line is bad");
+                        if (first_line_fn(req) == -1) {
+                                syslog(LOG_CRIT, "The 1st line is bad");
                                 return -1;
                         }
                         p_state = HEADER_LINES;
@@ -187,4 +216,14 @@ int parse_request(struct parser *req)
                         break;
                 }
         }
+}
+
+int parse_response(struct parser *reply)
+{
+        return parse_general_http(reply, parse_status_line);
+}
+
+int parse_request(struct parser *reply)
+{
+        return parse_general_http(reply, parse_request_line);
 }
