@@ -11,9 +11,12 @@
 
 #define RECV_BUF_SIZE 8192
 
-static void close_serving_thread(int sockfd)
+static void close_serving_thread(struct request *req)
 {
-        close(sockfd);
+        close(req->sockfd);
+        free(req->recv_buf);
+        for (int i=0; i < req->headers_num; i++)
+                free(req->headers[i].value);
 }
 
 static int forward_request(struct request *req)
@@ -34,17 +37,16 @@ static int forward_request(struct request *req)
         }
 
         int sfd = -1;
-        for (rp = result; rp != NULL; rp = rp->ai_next) {
+        for (rp = result; ; rp = rp->ai_next) {
+                if (rp == NULL)  /* none of the ip(s) can be connected */
+                        return -1;
                 sfd = socket(rp->ai_family, SOCK_STREAM, 0);
-                if (sfd == -1)
-                        continue;
-                if (connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
-                        break;
-
-                close(sfd);
+                if (sfd != -1) {
+                        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
+                                break;
+                        close(sfd);
+                }
         }
-        if (sfd == -1)
-                return -1;
 
         freeaddrinfo(result);
 
@@ -73,11 +75,7 @@ void *serve_request(void *p)
         if (parse_request(&req) == 0)
                 forward_request(&req);
 
-        /* cleanup */
-        for (int i=0; i < req.headers_num; i++)
-                free(req.headers[i].value);
-
         syslog(LOG_INFO, "closed connection");
-        close_serving_thread(sockfd);
+        close_serving_thread(&req);
         return NULL;
 }

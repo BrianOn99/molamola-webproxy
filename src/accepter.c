@@ -30,6 +30,7 @@ static int init_sock(char *port)
         setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int));
 
         int ret = bind(sockfd, res->ai_addr, res->ai_addrlen);
+        freeaddrinfo(res);
         if (ret == -1 || listen(sockfd, 0) == -1)
                 return -1;
         else
