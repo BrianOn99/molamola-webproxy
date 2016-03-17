@@ -8,14 +8,22 @@
 #include "http_parser.h"
 #include "readwrite.h"
 
-static void close_serving_thread(struct parser *req)
+static void close_serving_thread(struct parser *req, struct parser *reply)
 {
         parser_free(req);
         free(req);
+        parser_free(reply);
+        free(reply);
+
+        close(reply->sockfd);
         close(req->sockfd);
 }
 
-static int forward_request(struct parser *req)
+/*
+ * open a new connection to http server, by the information given in header
+ * fields of req.  Store the resultant parser in *reply
+ */
+static int connect_remote_http(struct parser *req, struct parser *reply)
 {
         char *hostname = header_to_value(req, "Host");
         if (!hostname)  /* the Host field is not found */
@@ -47,9 +55,17 @@ static int forward_request(struct parser *req)
         freeaddrinfo(result);
         syslog(LOG_INFO, "openned connection to remote http");
 
-        /* start forwarding the http request */
-        struct parser *reply = new_parser(sfd);
-        swrite(sfd, req->recv_buf, req->parse_start - req->recv_buf);
+        reply->sockfd = sfd;
+        return 0;
+}
+
+/*
+ * Assume that a request is stored in req.  Forward it to remote http, and send
+ * that back to client.
+ */
+static int forward_request(struct parser *req, struct parser *reply)
+{
+        swrite(reply->sockfd, req->recv_buf, req->parse_start - req->recv_buf);
         if (parse_response(reply) == 0) {
                 int header_len = reply->parse_start - reply->recv_buf;
                 char *content_len_str = header_to_value(reply, "Content-Length");
@@ -62,12 +78,9 @@ static int forward_request(struct parser *req)
                 int loaded_len = reply->parse_end - reply->recv_buf;
                 swrite(req->sockfd, reply->recv_buf, loaded_len);
                 /* write the remainings */
-                transfer_file_copy(req->sockfd, sfd, content_len + header_len - loaded_len);
+                transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
         }
 
-        parser_free(reply);
-        free(reply);
-        syslog(LOG_INFO, "closed connection to remote http");
         return 0;
 }
 
@@ -79,11 +92,22 @@ void *serve_request(void *p)
         int sockfd = *((int*)p);
 
         struct parser *req = new_parser(sockfd);
+        struct parser *reply = new_parser(-1);
 
-        if (parse_request(req) == 0)
-                forward_request(req);
+        /* serve for one http request, establish connection to remote host */
+        if ((parse_request(req) == -1) ||
+            (connect_remote_http(req, reply) == -1) ||
+            (forward_request(req, reply)) == -1) {
+                close_serving_thread(req, reply);
+        }
+
+        /* assume http keep-alive, repeatedly serve for more http requests */
+        do {
+                parser_reset(req);
+                parser_reset(reply);
+        } while (parse_request(req) == 0 && forward_request(req, reply) == 0);
 
         syslog(LOG_INFO, "closed connection");
-        close_serving_thread(req);
+        close_serving_thread(req, reply);
         return NULL;
 }

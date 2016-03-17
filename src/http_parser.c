@@ -14,15 +14,20 @@
 
 enum parse_state { REQUEST_LINE, HEADER_LINES };
 
+void parser_reset(struct parser *p)
+{
+        p->recv_buf_end = p->recv_buf + RECV_BUF_SIZE;
+        p->parse_start = p->parse_end = p->recv_buf;
+        p->headers_num = 0;
+}
+
 struct parser *new_parser(int sockfd)
 {
         char *buf = xmalloc(RECV_BUF_SIZE + 1);
         struct parser *p = xmalloc(sizeof(struct parser));
         p->sockfd = sockfd;
         p->recv_buf = buf;
-        p->recv_buf_end = buf + RECV_BUF_SIZE;
-        p->parse_start = p->parse_end = buf;
-        p->headers_num = 0;
+        parser_reset(p);
         return p;
 }
 
