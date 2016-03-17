@@ -10,10 +10,15 @@ make
 error are printed to stderr directly, while other messages are logged through
 syslog().  If you use systemd, `journalctl -b` will show you the messages.
 
+Some tools that I always open when I write code  which you may find useful:
+
+* use `telnet 127.0.0.1 [your port]` to hand-craft a http request.
+* firefox proxy + wireshark listening to Loopback
+
 == Coding Convention
 
 * Follow the Unix convention:
-** For function which DO something, return 0 in success
+** For function which DO something, return 0 in success, -1 on failure
 ** For function which TEST something, such as `isodd(num)`, return 1 on success
 * Avoid unnecessary typedef
 
