@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
@@ -25,9 +27,17 @@ static void close_serving_thread(struct parser *req, struct parser *reply)
  */
 static int connect_remote_http(struct parser *req, struct parser *reply)
 {
-        char *hostname = header_to_value(req, "Host");
+        char *hostname = strdupa(header_to_value(req, "Host"));
         if (!hostname)  /* the Host field is not found */
                 return -1;
+
+        char *p;
+        if ((p = strchr(hostname, ':'))) {  /* specific port given */
+                *p = '\0';
+                p++;  /* make p points to port number */
+        } else {
+                p = "80";
+        }
 
         struct addrinfo hints;
         struct addrinfo *result, *rp;
@@ -35,7 +45,7 @@ static int connect_remote_http(struct parser *req, struct parser *reply)
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_family = AF_UNSPEC;
 
-        if (getaddrinfo(hostname, "80", &hints, &result) != 0) {
+        if (getaddrinfo(hostname, p, &hints, &result) != 0) {
                 syslog(LOG_INFO, "cannot convert %s to ip", hostname);
                 return -1;
         }
