@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <sys/socket.h>
 #include "parser_state.h"
 #include "http_parser.h"
 #include "readwrite.h"
@@ -69,18 +70,27 @@ static int connect_remote_http(struct parser *req, struct parser *reply)
         return 0;
 }
 
-int last_chunk_remain_size(struct parser *reply)
+static int get_chunk_size(char const *str, unsigned int *size, unsigned int *consumed)
+{
+        if (EOF == sscanf(str, "%x\r\n%n", size, consumed)) {
+                fprintf(stderr, "cannot find chunk size\n");
+                return -1;
+        }
+        if (!consumed) {
+                fprintf(stderr, "chunk size is wierd\n");
+                return -1;
+        }
+        //write(1, str, 3);
+        //printf("chunk: %d, consume: %d\n", *size, *consumed);
+        return 0;
+}
+
+static int last_chunk_remain_size(struct parser *reply)
 {
 	unsigned int size, consumed;
 	while (1) {
-		if (EOF == sscanf(reply->parse_start, "%x\r\n%n", &size, &consumed)) {
-			fprintf(stderr, "cannot find chunk size\n");
-			return -1;
-		}
-		if (!size || !consumed) {
-			fprintf(stderr, "chunk size is wierd\n");
-			return -1;
-		}
+                if (get_chunk_size(reply->parse_start, &size, &consumed) == -1)
+                        return -1;
 		int loaded_remain = reply->parse_end - reply->parse_start;
 		if ((consumed + size) >= loaded_remain) {
 			return (consumed + size) - loaded_remain;
@@ -109,12 +119,33 @@ static int forward_request(struct parser *req, struct parser *reply)
                 if (content_len_str) {
                         int content_len = strtol(content_len_str, 0, 10);
 			/* write the remainings */
-			transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
+			int ret = transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
+                        if (ret == -1)
+                                return -1;
                 } else if (transfer_encoding_str) {
-			int last = last_chunk_remain_size(reply);
-			if (last == -1)
-				return -1;
-			transfer_file_copy(req->sockfd, reply->sockfd, last);
+                        if (reply->parse_end > reply->parse_start) {
+                                int last = last_chunk_remain_size(reply);
+                                if (last == -1)
+                                        return -1;
+                                transfer_file_copy(req->sockfd, reply->sockfd, last+2);
+                        }
+
+                        char chunklen[8];
+                        unsigned int size, consumed;
+                        while (1) {
+                                int ret = recv(reply->sockfd, chunklen, 8, MSG_PEEK);
+                                if (ret == 0 || ret == -1)
+                                        return -1;
+                                if (get_chunk_size(chunklen, &size, &consumed) == -1)
+                                        return -1;
+                                if (size == 0) {
+                                        transfer_file_copy(req->sockfd, reply->sockfd, 5);
+                                        break;
+                                        /* TODO: handle tail fields */
+                                } else {
+                                        transfer_file_copy(req->sockfd, reply->sockfd, size+consumed+2);
+                                }
+                        }
 		} else {
 			fprintf(stderr, "cannot find message length from http response\n");
 			return -1;
