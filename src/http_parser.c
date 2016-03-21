@@ -173,7 +173,7 @@ static int try_read(struct parser *req, unsigned int max_len)
         req->parse_end += ret;
         *(req->parse_end) = '\0';
 #ifdef _DEBUG
-        syslog(LOG_DEBUG, "something read: %s", req->parse_end - ret);
+        syslog(LOG_DEBUG, "something read: %d", ret);
 #endif
         return ret;
 }

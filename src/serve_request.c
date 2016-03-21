@@ -69,6 +69,27 @@ static int connect_remote_http(struct parser *req, struct parser *reply)
         return 0;
 }
 
+int last_chunk_remain_size(struct parser *reply)
+{
+	unsigned int size, consumed;
+	while (1) {
+		if (EOF == sscanf(reply->parse_start, "%x\r\n%n", &size, &consumed)) {
+			fprintf(stderr, "cannot find chunk size\n");
+			return -1;
+		}
+		if (!size || !consumed) {
+			fprintf(stderr, "chunk size is wierd\n");
+			return -1;
+		}
+		int loaded_remain = reply->parse_end - reply->parse_start;
+		if ((consumed + size) >= loaded_remain) {
+			return (consumed + size) - loaded_remain;
+		} else {
+			reply->parse_start += (consumed + size);
+		}
+	}
+}
+
 /*
  * Assume that a request is stored in req.  Forward it to remote http, and send
  * that back to client.
@@ -79,16 +100,25 @@ static int forward_request(struct parser *req, struct parser *reply)
         if (parse_response(reply) == 0) {
                 int header_len = reply->parse_start - reply->recv_buf;
                 char *content_len_str = header_to_value(reply, "Content-Length");
-                int content_len = 0;
-                if (content_len_str) {
-                        content_len = strtol(content_len_str, 0, 10);
-                }
+		char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
-                /* write all things we have received yet */
-                int loaded_len = reply->parse_end - reply->recv_buf;
-                swrite(req->sockfd, reply->recv_buf, loaded_len);
-                /* write the remainings */
-                transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
+		/* write all things we have received yet */
+		int loaded_len = reply->parse_end - reply->recv_buf;
+		swrite(req->sockfd, reply->recv_buf, loaded_len);
+
+                if (content_len_str) {
+                        int content_len = strtol(content_len_str, 0, 10);
+			/* write the remainings */
+			transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
+                } else if (transfer_encoding_str) {
+			int last = last_chunk_remain_size(reply);
+			if (last == -1)
+				return -1;
+			transfer_file_copy(req->sockfd, reply->sockfd, last);
+		} else {
+			fprintf(stderr, "cannot find message length from http response\n");
+			return -1;
+		}
         }
 
         return 0;
