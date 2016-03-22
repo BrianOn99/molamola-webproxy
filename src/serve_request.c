@@ -165,6 +165,7 @@ static int forward_request(struct parser *req, struct parser *reply)
 void *serve_request(void *p)
 {
         int sockfd = *((int*)p);
+        parser_init_global();
 
         struct parser *req = new_parser(sockfd);
         struct parser *reply = new_parser(-1);

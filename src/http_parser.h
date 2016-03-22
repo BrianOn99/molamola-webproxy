@@ -1,4 +1,5 @@
 struct parser *new_parser(int sockfd);
+void parser_init_global();
 void parser_free(struct parser *p);
 void parser_reset(struct parser *p);
 int parse_request(struct parser *req);

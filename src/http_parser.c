@@ -13,6 +13,14 @@
 #define RECV_BUF_SIZE 8192
 
 enum parse_state { REQUEST_LINE, HEADER_LINES };
+static regex_t regex_status_line, regex_request_line, regex_header_line;
+
+void parser_init_global()
+{
+        regcomp(&regex_request_line, "^(GET|POST|PUT|DELETE) [^ \r\n]+ HTTP/[0-9]\\.[0-9]\r\n", REG_EXTENDED);
+        regcomp(&regex_status_line, "^HTTP/[0-9]\\.[0-9] ([0-9]{3}) ([^\r]|\r[^\n])+\r\n", REG_EXTENDED);
+        regcomp(&regex_header_line, "^([a-zA-Z_-]+): (([^\r]|\r[^\n])+)\r\n", REG_EXTENDED);
+}
 
 void parser_reset(struct parser *p)
 {
@@ -70,19 +78,16 @@ char *header_to_value(struct parser *req, char field_name[])
 static int parse_request_line(struct parser *req)
 {
         char *str = req->parse_start;
-        static regex_t regex;
         /* store the match. [0] is the whole string. [1] is GET|POST|... */
         static regmatch_t match[2];
-        regcomp(&regex, "^(GET|POST|PUT|DELETE) [^ \r\n]+ HTTP/[0-9]\\.[0-9]\r\n", REG_EXTENDED);
-        int ret = regexec(&regex, str, 2, match, 0);
-        if (ret)
+        int ret = regexec(&regex_request_line, str, 2, match, 0);
+        if (ret == REG_NOMATCH)
                 return -1;
 
         regmatch_t met = match[1];
         req->type.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
         req->parse_start += match[0].rm_eo;
 
-        regfree(&regex);
         return 0;
 }
 
@@ -93,12 +98,10 @@ static int parse_request_line(struct parser *req)
 static int parse_status_line(struct parser *req)
 {
         char *str = req->parse_start;
-        static regex_t regex;
         /* store the match. [0] is the whole string. [1] is status code e.g.200 */
         static regmatch_t match[2];
-        regcomp(&regex, "^HTTP/[0-9]\\.[0-9] ([0-9]{3}) ([^\r]|\r[^\n])+\r\n", REG_EXTENDED);
-        int ret = regexec(&regex, str, 2, match, 0);
-        if (ret)
+        int ret = regexec(&regex_status_line, str, 2, match, 0);
+        if (ret == REG_NOMATCH)
                 return -1;
 
         regmatch_t met = match[1];
@@ -110,7 +113,6 @@ static int parse_status_line(struct parser *req)
         req->type.status_code = code;
         req->parse_start += match[0].rm_eo;
 
-        regfree(&regex);
         return 0;
 }
 
@@ -125,18 +127,16 @@ static char *dup_second_match(char *orig, regmatch_t match[])
 static int parse_header_line(struct parser *req)
 {
         char *str = req->parse_start;
-        static regex_t regex;
         /* store the match. [0] is the whole string.
          * [1] is Host|User-agent... [2] is the corresponding value [3] is
          * useless*/
         static regmatch_t match[4];
-        regcomp(&regex, "^([a-zA-Z_-]+): (([^\r]|\r[^\n])+)\r\n", REG_EXTENDED);
 
-        int ret = regexec(&regex, str, 4, match, 0);
-        if (ret)
+        int ret = regexec(&regex_header_line, str, 4, match, 0);
+        if (ret == REG_NOMATCH)
                 return -1;
 
-        /* store this  header */
+        /* store this header */
         int i = req->headers_num;
         if (i >= MAX_HEADER)  /* this should not happen in most cases */
                 return -1;
@@ -152,7 +152,6 @@ static int parse_header_line(struct parser *req)
 
         req->parse_start += match[0].rm_eo;  /* update where next parse should start */
 
-        regfree(&regex);
         return 0;
 }
 
