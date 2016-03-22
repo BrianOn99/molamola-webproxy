@@ -18,8 +18,10 @@ static void close_serving_thread(struct parser *req, struct parser *reply)
         parser_free(reply);
         free(reply);
 
-        close(reply->sockfd);
         close(req->sockfd);
+        if (reply->sockfd != -1)
+                close(reply->sockfd);
+        exit(0);
 }
 
 /*
@@ -72,16 +74,13 @@ static int connect_remote_http(struct parser *req, struct parser *reply)
 
 static int get_chunk_size(char const *str, unsigned int *size, unsigned int *consumed)
 {
-        if (EOF == sscanf(str, "%x\r\n%n", size, consumed)) {
+        if (EOF == sscanf(str, "%x%n\r", size, consumed) ||
+            str[*consumed] != '\r') {
+                //write(0, str, 4);
+                //printf("\nchunk: %d, consume: %d\n", *size, *consumed);
                 fprintf(stderr, "cannot find chunk size\n");
                 return -1;
         }
-        if (!consumed) {
-                fprintf(stderr, "chunk size is wierd\n");
-                return -1;
-        }
-        //write(1, str, 3);
-        //printf("chunk: %d, consume: %d\n", *size, *consumed);
         return 0;
 }
 
@@ -92,10 +91,11 @@ static int last_chunk_remain_size(struct parser *reply)
                 if (get_chunk_size(reply->parse_start, &size, &consumed) == -1)
                         return -1;
 		int loaded_remain = reply->parse_end - reply->parse_start;
-		if ((consumed + size) >= loaded_remain) {
-			return (consumed + size) - loaded_remain;
+                int bytes_to_next_chunk = (consumed+2) + size;
+		if (bytes_to_next_chunk >= loaded_remain) {
+			return bytes_to_next_chunk - loaded_remain;
 		} else {
-			reply->parse_start += (consumed + size);
+			reply->parse_start += bytes_to_next_chunk;
 		}
 	}
 }
@@ -131,19 +131,23 @@ static int forward_request(struct parser *req, struct parser *reply)
                         }
 
                         char chunklen[8];
-                        unsigned int size, consumed;
+                        unsigned int size, consumed, this_transfer;
                         while (1) {
-                                int ret = recv(reply->sockfd, chunklen, 8, MSG_PEEK);
+                                memset(chunklen, '\0', sizeof(chunklen)/sizeof(char));
+                                int ret = recv(reply->sockfd, chunklen, sizeof(chunklen)/sizeof(char)-1, MSG_PEEK);
                                 if (ret == 0 || ret == -1)
                                         return -1;
                                 if (get_chunk_size(chunklen, &size, &consumed) == -1)
                                         return -1;
+
+                                this_transfer = size ?
+                                                (consumed+2) + (size+2) :  /* "hex-len CRLF chunk CRLF" */
+                                                consumed + 4;  /* "end-chunk CRLF CRLF" */
+                                if (transfer_file_copy(req->sockfd, reply->sockfd, this_transfer) == -1)
+                                        return -1;
                                 if (size == 0) {
-                                        transfer_file_copy(req->sockfd, reply->sockfd, 5);
+                                        /* TODO: send remaining fields */
                                         break;
-                                        /* TODO: handle tail fields */
-                                } else {
-                                        transfer_file_copy(req->sockfd, reply->sockfd, size+consumed+2);
                                 }
                         }
 		} else {

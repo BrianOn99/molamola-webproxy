@@ -141,7 +141,9 @@ static int parse_header_line(struct parser *req)
         if (i >= MAX_HEADER)  /* this should not happen in most cases */
                 return -1;
         int len = match[1].rm_eo-match[1].rm_so;
+#ifdef _DEBUG
         syslog(LOG_INFO, "got %s", strndupa(str, match[1].rm_eo-match[1].rm_so));
+#endif
         memcpy(req->headers[i].field_name, (str + match[1].rm_so), len);
         req->headers[i].field_name[len] = '\0';
         req->headers[i].value = dup_second_match(str, match);
@@ -188,6 +190,10 @@ parse_general_http(struct parser *req, int (*first_line_fn)(struct parser *p))
         enum parse_state p_state = REQUEST_LINE;
         while (1) {
                 if (req->parse_start >= req->parse_end) {
+                        if (req->recv_buf_end - req->parse_end <= 0) {
+                                syslog(LOG_CRIT, "The headers are too long to handle");
+                                return -1;
+                        }
                         int ret = try_read(req, (req->recv_buf_end - req->parse_end));
                         if (ret == 0 || ret == -1) {  /* 0 means client closed */
                                 syslog(LOG_INFO, "early close");
