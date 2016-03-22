@@ -3,14 +3,18 @@
 #include <string.h>
 #include <crypt.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <syslog.h>
 #include "xmalloc.h"
 #include "parser_state.h"
 #include "http_parser.h"
+#include "readwrite.h"
+#include "cache.h"
 
 #define FILENAME_LEN 23
 
 /* borrowed from stackoverflow, by David Heffernan */
-char* concat(char *s1, char *s2)
+static char* concat(char *s1, char *s2)
 {
         size_t len1 = strlen(s1);
         size_t len2 = strlen(s2);
@@ -23,7 +27,7 @@ char* concat(char *s1, char *s2)
 /*
  * generate a hash to filename, which has length 23
  */
-void mk_filename(struct parser *req, char *filename)
+static void mk_filename(struct parser *req, char *filename)
 {
         char *hostname = header_to_value(req, "Host");
         char *full_url = concat(hostname, req->extra.req_line.url);
@@ -38,4 +42,31 @@ void mk_filename(struct parser *req, char *filename)
                 if (*p == '/')
                         *p = '_';
         }
+}
+
+/*
+ * return a file descriptor for caching
+ */
+cache_t mk_cache(struct parser *req)
+{
+        char filename[23];
+        mk_filename(req, filename);
+        return creat(filename, S_IWUSR | S_IRUSR);
+}
+
+int transfer_c(cache_t cache, struct parser *req, struct parser *reply, int len)
+{
+        if (cache != -1)
+                return transfer_file_copy_dual(cache, req->sockfd, reply->sockfd, len);
+        else
+                return transfer_file_copy(req->sockfd, reply->sockfd, len);
+}
+
+int swrite_c(cache_t cache, int fd, void *buf, unsigned int len)
+{
+        if (cache != -1)
+                return swrite(cache, buf, len) ||
+                       swrite(fd, buf, len);
+        else
+		return swrite(fd, buf, len);
 }

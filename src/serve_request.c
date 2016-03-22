@@ -112,16 +112,16 @@ static int forward_request(struct parser *req, struct parser *reply)
                 char *content_len_str = header_to_value(reply, "Content-Length");
 		char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
-                char filename[23];
-                mk_filename(req, filename);
+                cache_t cache = mk_cache(req);
+
 		/* write all things we have received yet */
 		int loaded_len = reply->parse_end - reply->recv_buf;
-		swrite(req->sockfd, reply->recv_buf, loaded_len);
+		swrite_c(cache, req->sockfd, reply->recv_buf, loaded_len);
 
                 if (content_len_str) {
                         int content_len = strtol(content_len_str, 0, 10);
 			/* write the remainings */
-			int ret = transfer_file_copy(req->sockfd, reply->sockfd, content_len + header_len - loaded_len);
+			int ret = transfer_c(cache, req, reply, content_len + header_len - loaded_len);
                         if (ret == -1)
                                 return -1;
                 } else if (transfer_encoding_str) {
@@ -129,7 +129,7 @@ static int forward_request(struct parser *req, struct parser *reply)
                                 int last = last_chunk_remain_size(reply);
                                 if (last == -1)
                                         return -1;
-                                transfer_file_copy(req->sockfd, reply->sockfd, last+2);
+                                transfer_c(cache, req, reply, last+2);
                         }
 
                         char chunklen[8];
@@ -145,7 +145,7 @@ static int forward_request(struct parser *req, struct parser *reply)
                                 this_transfer = size ?
                                                 (consumed+2) + (size+2) :  /* "hex-len CRLF chunk CRLF" */
                                                 consumed + 4;  /* "end-chunk CRLF CRLF" */
-                                if (transfer_file_copy(req->sockfd, reply->sockfd, this_transfer) == -1)
+                                if (transfer_c(cache, req, reply, this_transfer) == -1)
                                         return -1;
                                 if (size == 0) {
                                         /* TODO: send remaining fields */

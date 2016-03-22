@@ -85,3 +85,35 @@ int transfer_file_copy(int out_fd, int in_fd, off_t size_remain)
         }
         return 0;
 }
+
+/*
+ * Same as above except copy to 2 fd
+ * code duplication is ugly.  I have think hard in design pattern to refactor.
+ * closure callback is an obvious solution, which we don't have in C.  The
+ * adaptor pattern is ok, but might need ugly casting to mock interface.
+ * So I give up
+ */
+int transfer_file_copy_dual(int out_fd1, int out_fd2, int in_fd, off_t size_remain)
+{
+        void *buf = malloc(DATA_BUFSIZE);
+        if (!buf) {
+                perror("malloc error");
+                exit(1);
+        }
+        while (size_remain > 0) {
+                unsigned int send_this_time;
+                if (size_remain > DATA_BUFSIZE) {
+                        send_this_time = DATA_BUFSIZE;
+                } else {
+                        send_this_time = (unsigned int) size_remain;
+                }
+                if (sread(in_fd, buf, send_this_time) == -1)
+                        return -1;
+                if (swrite(out_fd1, buf, send_this_time) == -1)
+                        return -1;
+                if (swrite(out_fd2, buf, send_this_time) == -1)
+                        return -1;
+                size_remain -= send_this_time;
+        }
+        return 0;
+}
