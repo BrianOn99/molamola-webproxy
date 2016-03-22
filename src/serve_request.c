@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include <unistd.h>
 #include <string.h>
 #include <netdb.h>
@@ -10,6 +8,7 @@
 #include "parser_state.h"
 #include "http_parser.h"
 #include "readwrite.h"
+#include "cache.h"
 
 static void close_serving_thread(struct parser *req, struct parser *reply)
 {
@@ -30,7 +29,7 @@ static void close_serving_thread(struct parser *req, struct parser *reply)
  */
 static int connect_remote_http(struct parser *req, struct parser *reply)
 {
-        char *hostname = strdupa(header_to_value(req, "Host"));
+        char *hostname = strdup(header_to_value(req, "Host"));
         if (!hostname)  /* the Host field is not found */
                 return -1;
 
@@ -52,6 +51,7 @@ static int connect_remote_http(struct parser *req, struct parser *reply)
                 syslog(LOG_INFO, "cannot convert %s to ip", hostname);
                 return -1;
         }
+        free(hostname);
 
         int sfd = -1;
         for (rp = result; ; rp = rp->ai_next) {
@@ -112,6 +112,8 @@ static int forward_request(struct parser *req, struct parser *reply)
                 char *content_len_str = header_to_value(reply, "Content-Length");
 		char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
+                char filename[23];
+                mk_filename(req, filename);
 		/* write all things we have received yet */
 		int loaded_len = reply->parse_end - reply->recv_buf;
 		swrite(req->sockfd, reply->recv_buf, loaded_len);

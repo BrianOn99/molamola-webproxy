@@ -11,10 +11,10 @@ CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 %.o: src/%.c
 	$(CC_CMD)
 
-myproxy: server.o accepter.o xmalloc.o http_parser.o serve_request.o readwrite.o
-	$(CC) $(CFLAGS) -o $@ $^
+myproxy: server.o accepter.o xmalloc.o http_parser.o serve_request.o readwrite.o cache.o
+	$(CC) $(CFLAGS) -lcrypt -o $@ $^
 
-serve_request.o: http_parser.o readwrite.o
+serve_request.o: http_parser.o readwrite.o cache.o
 
 accepter.o: serve_request.o
 

@@ -17,7 +17,7 @@ static regex_t regex_status_line, regex_request_line, regex_header_line;
 
 void parser_init_global()
 {
-        regcomp(&regex_request_line, "^(GET|POST|PUT|DELETE) [^ \r\n]+ HTTP/[0-9]\\.[0-9]\r\n", REG_EXTENDED);
+        regcomp(&regex_request_line, "^(GET|POST|PUT|DELETE) ([^ \r\n]+) HTTP/[0-9]\\.[0-9]\r\n", REG_EXTENDED);
         regcomp(&regex_status_line, "^HTTP/[0-9]\\.[0-9] ([0-9]{3}) ([^\r]|\r[^\n])+\r\n", REG_EXTENDED);
         regcomp(&regex_header_line, "^([a-zA-Z_-]+): (([^\r]|\r[^\n])+)\r\n", REG_EXTENDED);
 }
@@ -71,6 +71,11 @@ char *header_to_value(struct parser *req, char field_name[])
         return NULL;
 }
 
+static char *dup_second_match(char *orig, regmatch_t match[])
+{
+        return strndup(orig+match[2].rm_so, (match[2].rm_eo - match[2].rm_so));
+}
+
 /*
  * Only use this for http request message
  * consume 1 line from req->parse_start, and store the HTTP method in request
@@ -78,14 +83,16 @@ char *header_to_value(struct parser *req, char field_name[])
 static int parse_request_line(struct parser *req)
 {
         char *str = req->parse_start;
-        /* store the match. [0] is the whole string. [1] is GET|POST|... */
-        static regmatch_t match[2];
-        int ret = regexec(&regex_request_line, str, 2, match, 0);
+        /* store the match. [0] is the whole string. [1] is GET|POST|...
+         * [2] is e.g. /index.html */
+        static regmatch_t match[3];
+        int ret = regexec(&regex_request_line, str, 3, match, 0);
         if (ret == REG_NOMATCH)
                 return -1;
 
         regmatch_t met = match[1];
-        req->type.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
+        req->extra.req_line.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
+        req->extra.req_line.url = dup_second_match(str, match);
         req->parse_start += match[0].rm_eo;
 
         return 0;
@@ -110,15 +117,10 @@ static int parse_status_line(struct parser *req)
         if (end-(str+met.rm_so) != 3)
                 return -1;
 
-        req->type.status_code = code;
+        req->extra.status_code = code;
         req->parse_start += match[0].rm_eo;
 
         return 0;
-}
-
-static char *dup_second_match(char *orig, regmatch_t match[])
-{
-        return strndup(orig+match[2].rm_so, (match[2].rm_eo - match[2].rm_so));
 }
 
 /*
