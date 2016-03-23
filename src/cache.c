@@ -47,26 +47,21 @@ static void mk_filename(struct parser *req, char *filename)
 /*
  * return a file descriptor for caching
  */
-cache_t mk_cache(struct parser *req)
+void mk_cache(cache_t *cache, struct parser *req)
 {
+        cache->use_cache = 0;
         char filename[23];
         mk_filename(req, filename);
-        return creat(filename, S_IWUSR | S_IRUSR);
+        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
 }
 
-int transfer_c(cache_t cache, struct parser *req, struct parser *reply, int len)
+int transfer_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len)
 {
-        if (cache != -1)
-                return transfer_file_copy_dual(cache, req->sockfd, reply->sockfd, len);
-        else
-                return transfer_file_copy(req->sockfd, reply->sockfd, len);
+        return transfer_file_copy_dual(cache->fd, req->sockfd, reply->sockfd, len);
 }
 
-int swrite_c(cache_t cache, int fd, void *buf, unsigned int len)
+int swrite_c(cache_t *cache, struct parser *req, void *buf, size_t len)
 {
-        if (cache != -1)
-                return swrite(cache, buf, len) ||
-                       swrite(fd, buf, len);
-        else
-		return swrite(fd, buf, len);
+        return swrite(cache->fd, buf, len) ||
+               swrite(req->sockfd, buf, len);
 }

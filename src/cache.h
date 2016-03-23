@@ -1,10 +1,13 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-typedef int cache_t;
+typedef struct {
+        int use_cache;  /* boolean */
+        int fd;  /* file to write or read */
+} cache_t;
 
-cache_t mk_cache(struct parser *req);
-int transfer_c(cache_t cache_fd, struct parser *req, struct parser *reply, int len);
-int swrite_c(cache_t cache, int fd, void *buf, unsigned int len);
+void mk_cache(cache_t *cache, struct parser *req);
+int transfer_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len);
+int swrite_c(cache_t *cache, struct parser *req, void *buf, size_t len);
 
 #endif

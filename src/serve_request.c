@@ -100,65 +100,90 @@ static int last_chunk_remain_size(struct parser *reply)
 	}
 }
 
-/*
- * Assume that a request is stored in req.  Forward it to remote http, and send
- * that back to client.
- */
-static int forward_request(struct parser *req, struct parser *reply)
+static int forward_request(cache_t *cache, struct parser *req, struct parser *reply)
 {
+        if (reply->sockfd == -1) {
+                if (connect_remote_http(req, reply) == -1)
+                        return -1;
+        }
+
+        /* forward request */
         swrite(reply->sockfd, req->recv_buf, req->parse_start - req->recv_buf);
-        if (parse_response(reply) == 0) {
-                int header_len = reply->parse_start - reply->recv_buf;
-                char *content_len_str = header_to_value(reply, "Content-Length");
-		char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
-                cache_t cache = mk_cache(req);
+        if (parse_response(reply) == -1)
+                return -1;
 
-		/* write all things we have received yet */
-		int loaded_len = reply->parse_end - reply->recv_buf;
-		swrite_c(cache, req->sockfd, reply->recv_buf, loaded_len);
+        int header_len = reply->parse_start - reply->recv_buf;
+        char *content_len_str = header_to_value(reply, "Content-Length");
+        char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
-                if (content_len_str) {
-                        int content_len = strtol(content_len_str, 0, 10);
-			/* write the remainings */
-			int ret = transfer_c(cache, req, reply, content_len + header_len - loaded_len);
-                        if (ret == -1)
+        /* write all things we have received yet */
+        int loaded_len = reply->parse_end - reply->recv_buf;
+        swrite_c(cache, req, reply, loaded_len);
+
+        if (content_len_str) {
+                int content_len = strtol(content_len_str, 0, 10);
+                /* write the remainings */
+                int ret = transfer_c(cache, req, reply, content_len + header_len - loaded_len);
+                if (ret == -1)
+                        return -1;
+        } else if (transfer_encoding_str) {
+                if (reply->parse_end > reply->parse_start) {
+                        int last = last_chunk_remain_size(reply);
+                        if (last == -1)
                                 return -1;
-                } else if (transfer_encoding_str) {
-                        if (reply->parse_end > reply->parse_start) {
-                                int last = last_chunk_remain_size(reply);
-                                if (last == -1)
-                                        return -1;
-                                transfer_c(cache, req, reply, last+2);
-                        }
+                        transfer_c(cache, req, reply, last+2);
+                }
 
-                        char chunklen[8];
-                        unsigned int size, consumed, this_transfer;
-                        while (1) {
-                                memset(chunklen, '\0', sizeof(chunklen)/sizeof(char));
-                                int ret = recv(reply->sockfd, chunklen, sizeof(chunklen)/sizeof(char)-1, MSG_PEEK);
-                                if (ret == 0 || ret == -1)
-                                        return -1;
-                                if (get_chunk_size(chunklen, &size, &consumed) == -1)
-                                        return -1;
+                char chunklen[8];
+                unsigned int size, consumed, this_transfer;
+                while (1) {
+                        memset(chunklen, '\0', sizeof(chunklen)/sizeof(char));
+                        int ret = recv(reply->sockfd, chunklen, sizeof(chunklen)/sizeof(char)-1, MSG_PEEK);
+                        if (ret == 0 || ret == -1)
+                                return -1;
+                        if (get_chunk_size(chunklen, &size, &consumed) == -1)
+                                return -1;
 
-                                this_transfer = size ?
-                                                (consumed+2) + (size+2) :  /* "hex-len CRLF chunk CRLF" */
-                                                consumed + 4;  /* "end-chunk CRLF CRLF" */
-                                if (transfer_c(cache, req, reply, this_transfer) == -1)
-                                        return -1;
-                                if (size == 0) {
-                                        /* TODO: send remaining fields */
-                                        break;
-                                }
+                        this_transfer = size ?
+                                (consumed+2) + (size+2) :  /* "hex-len CRLF chunk CRLF" */
+                                consumed + 4;  /* "end-chunk CRLF CRLF" */
+                        if (transfer_c(cache, req, reply, this_transfer) == -1)
+                                return -1;
+                        if (size == 0) {
+                                /* TODO: send remaining fields */
+                                break;
                         }
-		} else {
-			fprintf(stderr, "cannot find message length from http response\n");
-			return -1;
-		}
+                }
+        } else {
+                fprintf(stderr, "cannot find message length from http response\n");
+                return -1;
         }
 
         return 0;
+}
+
+int send_from_cache(cache_t *cache, struct parser *req)
+{
+        printf("send cache not implemented\n");
+        return -1;
+}
+
+/*
+ * Assume that a request is stored in req.
+ * First, find if we can send a cache.  If not, forward request to remote http,
+ * and send that back to client, cache it by the way.
+ */
+static int fullfill_request(struct parser *req, struct parser *reply)
+{
+        cache_t cache;
+        mk_cache(&cache, req);
+
+        if (cache.use_cache) {
+                return send_from_cache(&cache, req);
+        } else {
+                return forward_request(&cache, req, reply);
+        }
 }
 
 /*
@@ -172,18 +197,11 @@ void *serve_request(void *p)
         struct parser *req = new_parser(sockfd);
         struct parser *reply = new_parser(-1);
 
-        /* serve for one http request, establish connection to remote host */
-        if ((parse_request(req) == -1) ||
-            (connect_remote_http(req, reply) == -1) ||
-            (forward_request(req, reply)) == -1) {
-                close_serving_thread(req, reply);
-        }
-
         /* assume http keep-alive, repeatedly serve for more http requests */
-        do {
+        while (parse_request(req) == 0 && fullfill_request(req, reply) == 0) {
                 parser_reset(req);
                 parser_reset(reply);
-        } while (parse_request(req) == 0 && forward_request(req, reply) == 0);
+        }
 
         syslog(LOG_INFO, "closed connection");
         close_serving_thread(req, reply);
