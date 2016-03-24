@@ -193,7 +193,7 @@ parse_general_http(struct parser *req, int (*first_line_fn)(struct parser *p))
         while (1) {
                 if (req->parse_start >= req->parse_end) {
                         if (req->recv_buf_end - req->parse_end <= 0) {
-                                syslog(LOG_CRIT, "The headers are too long to handle");
+                                syslog(LOG_CRIT, "Exhaust buffer. The headers are too long to handle");
                                 return -1;
                         }
                         int ret = try_read(req, (req->recv_buf_end - req->parse_end));
@@ -205,7 +205,7 @@ parse_general_http(struct parser *req, int (*first_line_fn)(struct parser *p))
 
                 char *p = line_end(req);
                 if (!p) {
-                        syslog(LOG_CRIT, "The headers are too long to handle");
+                        syslog(LOG_CRIT, "Cannot find line end. The headers are too long to handle");
                         return -1;
                 }
 

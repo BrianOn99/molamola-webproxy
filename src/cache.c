@@ -100,8 +100,9 @@ int transfer_c(cache_t *cache, struct parser *req, struct parser *reply, size_t 
         return transfer_file_copy_dual(cache->fd, req->sockfd, reply->sockfd, len);
 }
 
-int swrite_c(cache_t *cache, struct parser *req, void *buf, size_t len)
+int swrite_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len)
 {
+        char *buf = reply->recv_buf;
         return swrite(cache->fd, buf, len) ||
                swrite(req->sockfd, buf, len);
 }

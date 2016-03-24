@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include "parser_state.h"
 #include "http_parser.h"
@@ -166,8 +167,10 @@ static int forward_request(cache_t *cache, struct parser *req, struct parser *re
 
 int send_from_cache(cache_t *cache, struct parser *req)
 {
-        printf("send cache not implemented\n");
-        return -1;
+        syslog(LOG_INFO, "sending file from cache");
+        struct stat buf;
+        fstat(cache->fd, &buf);
+        return transfer_file_copy(req->sockfd, cache->fd, buf.st_size);
 }
 
 /*
