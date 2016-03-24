@@ -40,18 +40,7 @@ static int init_sock(char *port)
 /*
  * make a new thread to serve this sockfd (not implemented)
  */
-void *dedicated_serve(void *p)
-  {
-       int sockfd = *((int*)p);
-       if (wait_authenicated(sockfd) == -1) {
-                  printf("authenication has problem\n");
-                  close_serving_thread(sockfd);
- 
-          }
-                 printf("closed connection\n");
-        close_serving_thread(sockfd);
-        return NULL;
-  }
+
   
 
 static void mkthread_serve(int sockfd)
@@ -62,7 +51,10 @@ static void mkthread_serve(int sockfd)
                 return;
         }
         thread_sockfd[sockfd] = sockfd;
-        serve_request(&thread_sockfd[sockfd]);
+        pthread_t thread_id;
+        pthread_create(&thread_id ,NULL, serve_request, &thread_sockfd[sockfd]);
+        pthread_detach(thread_id);
+
 }
 
 /*
