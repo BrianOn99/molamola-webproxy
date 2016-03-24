@@ -180,7 +180,7 @@ static int fullfill_request(struct parser *req, struct parser *reply)
         cache_t cache;
         mk_cache(&cache, req);
 
-        if (cache.use_cache) {
+        if (cache.type == CACHE_READ) {
                 return send_from_cache(&cache, req);
         } else {
                 return forward_request(&cache, req, reply);

@@ -4,6 +4,7 @@
 #include <crypt.h>
 #include <stdlib.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <syslog.h>
 #include "xmalloc.h"
 #include "parser_state.h"
@@ -45,15 +46,53 @@ static void mk_filename(struct parser *req, char *filename)
         }
 }
 
+int is_cachable_file_ext(char **name)
+{
+        static char * ext_list[] = { ".html", ".jpg", ".gif", ".txt", ".pdf" };
+        char *ext;
+        char *name_end = name[1];
+        for (ext = name_end-1; ext > name[0]; ext--) {
+                if (ext - name_end > 6) return 0;  /* not interested in long extension */
+                if (*ext == '.') break;
+        }
+
+        for (int i=0; i < sizeof(ext_list)/sizeof(char*); i++) {
+                if (strncmp(ext_list[i], ext, name_end-ext) == 0)
+                        return 1;
+        }
+
+        return 0;  /* no one match */
+}
+
 /*
  * return a file descriptor for caching
  */
 void mk_cache(cache_t *cache, struct parser *req)
 {
-        cache->use_cache = 0;
         char filename[23];
         mk_filename(req, filename);
-        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+
+	if (access(filename, F_OK) == -1) {
+                /* cache not exist */
+
+                if (!is_cachable_file_ext(req->extra.req_line.url)) {
+#ifdef _DEBUG
+                        syslog(LOG_DEBUG, "the file extension is not cachable");
+#endif
+                        cache->type = CACHE_NOTHING;
+                        return;
+                }
+
+#ifdef _DEBUG
+                syslog(LOG_DEBUG, "the file extension is cachable");
+#endif
+                cache->type = CACHE_WRITE;
+                cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+        } else {
+                /* cache exist */
+                cache->type = CACHE_READ;
+                cache->fd = open(filename, O_RDONLY);
+        }
 }
 
 int transfer_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len)
