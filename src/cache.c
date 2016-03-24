@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/stat.h>
 #include "xmalloc.h"
 #include "parser_state.h"
 #include "http_parser.h"
@@ -83,6 +85,16 @@ void mk_nothing_cache(cache_t *cache)
         cache->fd = -1;
 }
 
+void insert_last_modified_since(struct parser *req, char name[])
+{
+        struct stat buf;
+        stat(name, &buf);
+        strftime(req->add_fields, 30, "%a, %d %b %Y %H:%M:%S %Z", gmtime(&buf.st_mtime));
+        req->add_fields[30] = '\r';
+        req->add_fields[31] = '\n';
+        req->add_fields_len = 31;
+}
+
 /*
  * return a file descriptor for caching
  */
@@ -115,7 +127,7 @@ void mk_cache(cache_t *cache, struct parser *req)
                         cache->type = RESPONSE304;
                         cache->fd = -1;
                 } else if (!ims && cache_control) {
-                        //insert_last_modified_since(req);
+                        insert_last_modified_since(req, cache->filename);
                         cache->type = CACHE_CONDITIONAL_304_200;
                         cache->fd = -1;
                 } else if (ims && cache_control) {

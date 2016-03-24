@@ -17,5 +17,7 @@ struct parser {
         char *parse_end;    /* only data upto this (exclusive) is meaningful */
         int headers_num;
         struct headers_fields headers[MAX_HEADER];
+        int add_fields_len;
+        char add_fields[128];
         union { struct req_line req_line; int status_code; } extra;
 };

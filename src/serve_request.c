@@ -6,6 +6,7 @@
 #include <syslog.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <pthread.h>
 #include "parser_state.h"
 #include "http_parser.h"
 #include "readwrite.h"
@@ -21,7 +22,8 @@ static void close_serving_thread(struct parser *req, struct parser *reply)
         close(req->sockfd);
         if (reply->sockfd != -1)
                 close(reply->sockfd);
-        exit(0);
+
+        pthread_exit(NULL);
 }
 
 /*
@@ -118,7 +120,13 @@ static int forward_request(cache_t *cache, struct parser *req, struct parser *re
         }
 
         /* forward request */
-        swrite(reply->sockfd, req->recv_buf, req->parse_start - req->recv_buf);
+        if (req->add_fields_len > 0) {
+                swrite(reply->sockfd, req->recv_buf, req->parse_start - req->recv_buf);
+        } else {
+                swrite(reply->sockfd, req->recv_buf, (req->parse_start - req->recv_buf) - 2);
+                swrite(reply->sockfd, req->add_fields, req->add_fields_len);
+                swrite(reply->sockfd, "\r\n", 2);
+        }
 
         if (parse_response(reply) == -1)
                 return -1;

@@ -27,6 +27,7 @@ void parser_reset(struct parser *p)
         p->recv_buf_end = p->recv_buf + RECV_BUF_SIZE;
         p->parse_start = p->parse_end = p->recv_buf;
         p->headers_num = 0;
+        p->add_fields_len = 0;
 }
 
 struct parser *new_parser(int sockfd)

@@ -6,6 +6,7 @@
 #include "stdio.h"
 #include "syslog.h"
 #include "serve_request.h"
+#include <pthread.h>
 
 #define MAXFD 4096
 
@@ -36,10 +37,12 @@ static int init_sock(char *port)
         else
                 return sockfd;
 }
-
 /*
  * make a new thread to serve this sockfd (not implemented)
  */
+
+
+
 static void mkthread_serve(int sockfd)
 {
         if (sockfd >= MAXFD) {
@@ -48,7 +51,10 @@ static void mkthread_serve(int sockfd)
                 return;
         }
         thread_sockfd[sockfd] = sockfd;
-        serve_request(&thread_sockfd[sockfd]);
+        pthread_t thread_id;
+        pthread_create(&thread_id ,NULL, serve_request, &thread_sockfd[sockfd]);
+        pthread_detach(thread_id);
+
 }
 
 /*
