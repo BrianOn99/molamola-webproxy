@@ -6,6 +6,7 @@
 #include "stdio.h"
 #include "syslog.h"
 #include "serve_request.h"
+#include <pthread.h>
 
 #define MAXFD 4096
 
@@ -36,10 +37,23 @@ static int init_sock(char *port)
         else
                 return sockfd;
 }
-
 /*
  * make a new thread to serve this sockfd (not implemented)
  */
+void *dedicated_serve(void *p)
+  {
+       int sockfd = *((int*)p);
+       if (wait_authenicated(sockfd) == -1) {
+                  printf("authenication has problem\n");
+                  close_serving_thread(sockfd);
+ 
+          }
+                 printf("closed connection\n");
+        close_serving_thread(sockfd);
+        return NULL;
+  }
+  
+
 static void mkthread_serve(int sockfd)
 {
         if (sockfd >= MAXFD) {
@@ -77,3 +91,9 @@ int serve(char *port)
                 mkthread_serve(spawned_sockfd);
         }
 }
+
+void close_serving_thread(int sockfd)
+  {
+          close(sockfd);
+          pthread_exit(NULL);
+  }
