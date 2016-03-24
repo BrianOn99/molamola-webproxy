@@ -65,47 +65,61 @@ int is_cachable_file_ext(char **name)
         return 0;  /* no one match */
 }
 
+void mk_write_cache(cache_t *cache)
+{
+        cache->type = CACHE_WRITE;
+        cache->fd = creat(cache->filename, S_IWUSR | S_IRUSR);
+}
+
+void mk_read_cache(cache_t *cache)
+{
+        cache->type = CACHE_READ;
+        cache->fd = open(cache->filename, O_RDONLY);
+}
+
+void mk_nothing_cache(cache_t *cache)
+{
+        cache->type = CACHE_NOTHING;
+        cache->fd = -1;
+}
+
 /*
  * return a file descriptor for caching
  */
 void mk_cache(cache_t *cache, struct parser *req)
 {
-        char filename[23];
-        mk_filename(req, filename);
+        if (!is_cachable_file_ext(req->extra.req_line.url)) {
+#ifdef _DEBUG
+                syslog(LOG_DEBUG, "the file extension is not cachable");
+#endif
+                cache->type = CACHE_NOTHING;
+                return;
+        }
 
-	if (access(filename, F_OK) == -1) {
+        mk_filename(req, cache->filename);
+
+        if (access(cache->filename, F_OK) == -1) {
                 /* cache not exist */
-
-                if (!is_cachable_file_ext(req->extra.req_line.url)) {
 #ifdef _DEBUG
-                        syslog(LOG_DEBUG, "the file extension is not cachable");
+                syslog(LOG_DEBUG, "the file extension is cachable and not exist");
 #endif
-                        cache->type = CACHE_NOTHING;
-                        return;
-                }
-
-#ifdef _DEBUG
-                syslog(LOG_DEBUG, "the file extension is cachable");
-#endif
-                cache->type = CACHE_WRITE;
-                cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+                mk_write_cache(cache);
         } else {
                 /* cache exist */
                 char **ims = header_to_value(req, "If-Modified-Since");
                 char **cache_control = header_to_value(req, "Cache-Control");
 
                 if (!ims && !cache_control) {
-                        cache->type = CACHE_READ;
-                        cache->fd = open(filename, O_RDONLY);
+                        mk_read_cache(cache);
                 } else if (ims && !cache_control) {
                         cache->type = RESPONSE304;
                         cache->fd = -1;
                 } else if (!ims && cache_control) {
-                        cache->type = CACHE_WRITE;
-                        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+                        //insert_last_modified_since(req);
+                        cache->type = CACHE_CONDITIONAL_304_200;
+                        cache->fd = -1;
                 } else if (ims && cache_control) {
-                        cache->type = CACHE_WRITE;
-                        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+                        mk_write_cache(cache);
                 }
         }
 }

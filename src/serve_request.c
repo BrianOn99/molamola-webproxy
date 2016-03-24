@@ -102,6 +102,14 @@ static int last_chunk_remain_size(struct parser *reply)
 	}
 }
 
+int send_from_cache(cache_t *cache, struct parser *req)
+{
+        syslog(LOG_INFO, "sending file from cache");
+        struct stat buf;
+        fstat(cache->fd, &buf);
+        return transfer_file_copy(req->sockfd, cache->fd, buf.st_size);
+}
+
 static int forward_request(cache_t *cache, struct parser *req, struct parser *reply)
 {
         if (reply->sockfd == -1) {
@@ -114,6 +122,20 @@ static int forward_request(cache_t *cache, struct parser *req, struct parser *re
 
         if (parse_response(reply) == -1)
                 return -1;
+
+        if (cache->type == CACHE_CONDITIONAL_304_200) {
+                switch (reply->extra.status_code) {
+                case 304:
+                        mk_read_cache(cache);
+                        return send_from_cache(cache, req);
+                case 200:
+                        mk_write_cache(cache);
+                        break;
+                default:
+                        mk_nothing_cache(cache);
+                        break;
+                }
+        }
 
         int header_len = reply->parse_start - reply->recv_buf;
         char **content_len_str = header_to_value(reply, "Content-Length");
@@ -163,14 +185,6 @@ static int forward_request(cache_t *cache, struct parser *req, struct parser *re
         }
 
         return 0;
-}
-
-int send_from_cache(cache_t *cache, struct parser *req)
-{
-        syslog(LOG_INFO, "sending file from cache");
-        struct stat buf;
-        fstat(cache->fd, &buf);
-        return transfer_file_copy(req->sockfd, cache->fd, buf.st_size);
 }
 
 static int response304(struct parser *req)
