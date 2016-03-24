@@ -75,11 +75,6 @@ char ** header_to_value(struct parser *req, char field_name[])
         return NULL;
 }
 
-static char *dup_second_match(char *orig, regmatch_t match[])
-{
-        return strndup(orig+match[2].rm_so, (match[2].rm_eo - match[2].rm_so));
-}
-
 /*
  * Only use this for http request message
  * consume 1 line from req->parse_start, and store the HTTP method in request
@@ -95,8 +90,9 @@ static int parse_request_line(struct parser *req)
                 return -1;
 
         regmatch_t met = match[1];
-        req->extra.req_line.method = (strcmp("GET", str + met.rm_so) == 0) ? GET : OTHER;
-        req->extra.req_line.url = dup_second_match(str, match);
+        req->extra.req_line.method = (strncmp("GET", str + met.rm_so, 3) == 0) ? GET : OTHER;
+        req->extra.req_line.url[0] = str + match[2].rm_so;
+        req->extra.req_line.url[1] = str + match[2].rm_eo;
         req->parse_start += match[0].rm_eo;
 
         return 0;

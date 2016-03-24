@@ -12,7 +12,7 @@ CC_CMD = $(CC) $(CFLAGS) -o $@ -c $<
 	$(CC_CMD)
 
 myproxy: server.o accepter.o xmalloc.o http_parser.o serve_request.o readwrite.o cache.o
-	$(CC) $(CFLAGS) -lcrypt -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lcrypt
 
 serve_request.o: http_parser.o readwrite.o cache.o
 

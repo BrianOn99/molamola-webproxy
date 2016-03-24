@@ -1,6 +1,6 @@
 #define MAX_HEADER 50  /* We will only store important headers */
 enum method { GET, OTHER };
-struct req_line { enum method method; char *url; };
+struct req_line { enum method method; char *url[2]; };
 //union extra { struct req_line; int status_code; };
 
 struct headers_fields {
