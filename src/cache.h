@@ -1,7 +1,7 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-enum cache_type { CACHE_NOTHING, CACHE_WRITE, CACHE_READ };
+enum cache_type { CACHE_NOTHING, CACHE_WRITE, CACHE_READ, RESPONSE304 };
 typedef struct {
         enum cache_type type;
         int fd;  /* file to write or read */

@@ -173,6 +173,13 @@ int send_from_cache(cache_t *cache, struct parser *req)
         return transfer_file_copy(req->sockfd, cache->fd, buf.st_size);
 }
 
+static int response304(struct parser *req)
+{
+        syslog(LOG_INFO, "sending 304");
+        static char s[] = "HTTP/1.1 304 Not Modified\r\n\r\n";
+        return swrite(req->sockfd, s, sizeof(s)/sizeof(char));
+}
+
 /*
  * Assume that a request is stored in req.
  * First, find if we can send a cache.  If not, forward request to remote http,
@@ -185,6 +192,8 @@ static int fullfill_request(struct parser *req, struct parser *reply)
 
         if (cache.type == CACHE_READ) {
                 return send_from_cache(&cache, req);
+        } else if (cache.type == RESPONSE304) {
+                return response304(req);
         } else {
                 return forward_request(&cache, req, reply);
         }

@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <syslog.h>
+#include <stdio.h>
 #include "xmalloc.h"
 #include "parser_state.h"
 #include "http_parser.h"
@@ -90,19 +91,47 @@ void mk_cache(cache_t *cache, struct parser *req)
                 cache->fd = creat(filename, S_IWUSR | S_IRUSR);
         } else {
                 /* cache exist */
-                cache->type = CACHE_READ;
-                cache->fd = open(filename, O_RDONLY);
+                char **ims = header_to_value(req, "If-Modified-Since");
+                char **cache_control = header_to_value(req, "Cache-Control");
+
+                if (!ims && !cache_control) {
+                        cache->type = CACHE_READ;
+                        cache->fd = open(filename, O_RDONLY);
+                } else if (ims && !cache_control) {
+                        cache->type = RESPONSE304;
+                        cache->fd = -1;
+                } else if (!ims && cache_control) {
+                        cache->type = CACHE_WRITE;
+                        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+                } else if (ims && cache_control) {
+                        cache->type = CACHE_WRITE;
+                        cache->fd = creat(filename, S_IWUSR | S_IRUSR);
+                }
         }
 }
 
 int transfer_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len)
 {
-        return transfer_file_copy_dual(cache->fd, req->sockfd, reply->sockfd, len);
+        if (cache->type == CACHE_WRITE) {
+                return transfer_file_copy_dual(cache->fd, req->sockfd, reply->sockfd, len);
+        } else if (cache->type == CACHE_NOTHING) {
+                return transfer_file_copy(req->sockfd, reply->sockfd, len);
+        } else {
+                fprintf(stderr, "transfer_c: should not handle this cache here");
+                return -1;
+        }
 }
 
 int swrite_c(cache_t *cache, struct parser *req, struct parser *reply, size_t len)
 {
         char *buf = reply->recv_buf;
-        return swrite(cache->fd, buf, len) ||
-               swrite(req->sockfd, buf, len);
+        if (cache->type == CACHE_WRITE) {
+                return swrite(cache->fd, buf, len) ||
+                       swrite(req->sockfd, buf, len);
+        } else if (cache->type == CACHE_NOTHING) {
+                return swrite(req->sockfd, buf, len);
+        } else {
+                fprintf(stderr, "swrite_c: should not handle this cache here");
+                return -1;
+        }
 }

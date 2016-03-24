@@ -233,10 +233,12 @@ parse_general_http(struct parser *req, int (*first_line_fn)(struct parser *p))
 
 int parse_response(struct parser *reply)
 {
+        syslog(LOG_INFO, "parse response");
         return parse_general_http(reply, parse_status_line);
 }
 
 int parse_request(struct parser *reply)
 {
+        syslog(LOG_INFO, "parse request");
         return parse_general_http(reply, parse_request_line);
 }
