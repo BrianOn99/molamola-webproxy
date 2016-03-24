@@ -14,9 +14,9 @@
 #define FILENAME_LEN 23
 
 /* borrowed from stackoverflow, by David Heffernan */
-static char* concat(char *s1, char *s2)
+static char* concat(char **s1, char *s2)
 {
-        size_t len1 = strlen(s1);
+        size_t len1 = ptr_strlen(s1);
         size_t len2 = strlen(s2);
         char *result = xmalloc(len1+len2+1);//+1 for the zero-terminator
         memcpy(result, s1, len1);
@@ -29,7 +29,7 @@ static char* concat(char *s1, char *s2)
  */
 static void mk_filename(struct parser *req, char *filename)
 {
-        char *hostname = header_to_value(req, "Host");
+        char **hostname = header_to_value(req, "Host");
         char *full_url = concat(hostname, req->extra.req_line.url);
 #ifdef _DEBUG
         syslog(LOG_DEBUG, "going to hash %s", full_url);

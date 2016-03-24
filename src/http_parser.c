@@ -42,8 +42,6 @@ struct parser *new_parser(int sockfd)
 void parser_free(struct parser *req)
 {
         free(req->recv_buf);
-        for (int i=0; i < req->headers_num; i++)
-                free(req->headers[i].value);
 }
 
 /*
@@ -58,14 +56,20 @@ static char *line_end(struct parser *req)
         return NULL;
 }
 
+size_t ptr_strlen(char *str[])
+{
+        return str[1] - str[0];
+}
+
 /*
  * this is called after the headers are paresed
  * to get the value associated with a header field
  */
-char *header_to_value(struct parser *req, char field_name[])
+char ** header_to_value(struct parser *req, char field_name[])
 {
         for (int i=0; i < req->headers_num; i++) {
-                if (strcmp(field_name, req->headers[i].field_name) == 0)
+                int len = ptr_strlen(req->headers[i].field_name);
+                if (memcmp(field_name, req->headers[i].field_name[0], len) == 0)
                         return req->headers[i].value;
         }
         return NULL;
@@ -142,13 +146,14 @@ static int parse_header_line(struct parser *req)
         int i = req->headers_num;
         if (i >= MAX_HEADER)  /* this should not happen in most cases */
                 return -1;
-        int len = match[1].rm_eo-match[1].rm_so;
 #ifdef _DEBUG
         syslog(LOG_INFO, "got %s", strndupa(str, match[1].rm_eo-match[1].rm_so));
 #endif
-        memcpy(req->headers[i].field_name, (str + match[1].rm_so), len);
-        req->headers[i].field_name[len] = '\0';
-        req->headers[i].value = dup_second_match(str, match);
+        //memcpy(req->headers[i].field_name, (str + match[1].rm_so), len);
+        req->headers[i].field_name[0] = str + match[1].rm_so;
+        req->headers[i].field_name[1] = str + match[1].rm_eo;
+        req->headers[i].value[0] = str + match[2].rm_so;
+        req->headers[i].value[1] = str + match[2].rm_eo;
         req->headers_num++;
         /* finish storing header */
 

@@ -4,9 +4,9 @@ struct req_line { enum method method; char *url; };
 //union extra { struct req_line; int status_code; };
 
 struct headers_fields {
-        /* value points to parsed token, which is malloced */
-        char field_name[32];
-        char *value;
+        /* points to start ([0]) and end ([1]) of token */
+        char *field_name[2];
+        char *value[2];
 };
 
 struct parser {

@@ -29,9 +29,10 @@ static void close_serving_thread(struct parser *req, struct parser *reply)
  */
 static int connect_remote_http(struct parser *req, struct parser *reply)
 {
-        char *hostname = strdup(header_to_value(req, "Host"));
-        if (!hostname)  /* the Host field is not found */
+        char **host_field = header_to_value(req, "Host");
+        if (!host_field)  /* the Host field is not found */
                 return -1;
+        char *hostname = strndup(host_field[0], ptr_strlen(host_field));
 
         char *p;
         if ((p = strchr(hostname, ':'))) {  /* specific port given */
@@ -114,15 +115,15 @@ static int forward_request(cache_t *cache, struct parser *req, struct parser *re
                 return -1;
 
         int header_len = reply->parse_start - reply->recv_buf;
-        char *content_len_str = header_to_value(reply, "Content-Length");
-        char *transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
+        char **content_len_str = header_to_value(reply, "Content-Length");
+        char **transfer_encoding_str = header_to_value(reply, "Transfer-Encoding");
 
         /* write all things we have received yet */
         int loaded_len = reply->parse_end - reply->recv_buf;
         swrite_c(cache, req, reply, loaded_len);
 
         if (content_len_str) {
-                int content_len = strtol(content_len_str, 0, 10);
+                int content_len = strtol(content_len_str[0], NULL, 10);
                 /* write the remainings */
                 int ret = transfer_c(cache, req, reply, content_len + header_len - loaded_len);
                 if (ret == -1)
