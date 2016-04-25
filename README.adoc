@@ -1,5 +1,12 @@
 = molamola-web-proxy, a http proxy which slows down your http service
 
+[WARNING]
+====
+* It works, but there are quite a lot of bugs.  They will *NEVER* be fixed.
+* It is intended for reference only (to see how HTTP works).  *Don't* use it.
+* This is an CUHK CS assignment.  *NOT* for secure usage.
+====
+
 == Build
 ----
 make
@@ -22,7 +29,3 @@ Some tools that I always open when I write code  which you may find useful:
 ** For function which TEST something, such as `isodd(num)`, return 1 on success
 * Avoid unnecessary typedef
 
-[WARNING]
-====
-* This is an CUHK CS assignment.  *NOT* for secure usage.
-====
